@@ -593,6 +593,68 @@
   clip: rect(0, 0, 0, 0);
 }
 
+.thumbnail-drop {
+  display: grid;
+  min-height: 6.5rem;
+  place-content: center;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: var(--rule-heavy) dashed var(--color-rule-strong);
+  background: var(--color-paper-2);
+  color: var(--color-muted);
+  text-align: center;
+  cursor: pointer;
+  transition: background-color var(--dur-short) var(--ease-out), border-color var(--dur-short) var(--ease-out);
+}
+
+.thumbnail-drop.is-over,
+.thumbnail-drop:focus-within {
+  border-color: var(--color-ink);
+  background: var(--color-cyan-soft);
+  color: var(--color-ink);
+}
+
+.thumbnail-drop__title {
+  color: var(--color-ink);
+  font-weight: 900;
+}
+
+.thumbnail-drop input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.thumbnail-preview {
+  overflow: hidden;
+  border: var(--rule-heavy) solid var(--color-rule-strong);
+  background: var(--color-paper-2);
+}
+
+.thumbnail-preview img {
+  display: block;
+  width: 100%;
+  max-height: 15rem;
+  object-fit: contain;
+}
+
+.thumbnail-state {
+  min-height: 1lh;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.thumbnail-state[data-state="valid"] {
+  color: var(--color-success);
+}
+
+.thumbnail-state[data-state="error"] {
+  color: var(--color-error);
+}
+
 .zip-report {
   min-height: 3.5rem;
   padding: var(--space-sm);

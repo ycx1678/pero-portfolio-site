@@ -1,6 +1,10 @@
 (() => {
   const STORAGE_KEY = "pero-portfolio-admin-v1";
   const MAX_ZIP_BYTES = 200 * 1024 * 1024;
+  const MAX_THUMBNAIL_INPUT_BYTES = 10 * 1024 * 1024;
+  const MAX_THUMBNAIL_OUTPUT_BYTES = 80 * 1024;
+  const MAX_THUMBNAIL_SIDE = 720;
+  const MIN_THUMBNAIL_SIDE = 280;
   const clone = (value) => JSON.parse(JSON.stringify(value));
 
   const storageAdapter = {
@@ -26,6 +30,11 @@
   const categoryInput = document.querySelector("#work-category");
   const titleInput = document.querySelector("#work-title");
   const thumbnailInput = document.querySelector("#work-thumbnail");
+  const thumbnailFileInput = document.querySelector("[data-thumbnail-file]");
+  const thumbnailDrop = document.querySelector("[data-thumbnail-drop]");
+  const thumbnailPreviewWrap = document.querySelector("[data-thumbnail-preview-wrap]");
+  const thumbnailPreview = document.querySelector("[data-thumbnail-preview]");
+  const thumbnailState = document.querySelector("[data-thumbnail-state]");
   const videoInput = document.querySelector("#work-video");
   const imageInput = document.querySelector("#work-image");
   const publishedInput = document.querySelector("#work-published");
@@ -64,6 +73,8 @@
 
   let items = [];
   let pendingZip = null;
+  let uploadedThumbnail = "";
+  let isProcessingThumbnail = false;
   let draggedId = null;
   let undoCallback = null;
   let undoTimer = 0;
@@ -100,6 +111,97 @@
     unit: bytes >= 1024 * 1024 ? "megabyte" : "kilobyte",
     maximumFractionDigits: 1
   }).format(bytes >= 1024 * 1024 ? bytes / (1024 * 1024) : bytes / 1024);
+
+  const setThumbnailState = (state, message) => {
+    thumbnailState.dataset.state = state;
+    thumbnailState.textContent = message;
+  };
+
+  const showThumbnailPreview = (source) => {
+    thumbnailPreview.src = source;
+    thumbnailPreviewWrap.hidden = false;
+  };
+
+  const clearThumbnailUpload = () => {
+    uploadedThumbnail = "";
+    isProcessingThumbnail = false;
+    thumbnailFileInput.value = "";
+    thumbnailPreview.removeAttribute("src");
+    thumbnailPreviewWrap.hidden = true;
+    setThumbnailState("idle", "파일을 넣으면 대표 이미지로 바로 사용할 수 있습니다.");
+  };
+
+  const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("이미지 파일을 읽을 수 없습니다."));
+    reader.readAsDataURL(file);
+  });
+
+  const loadImage = (source) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("이미지를 열 수 없습니다."));
+    image.src = source;
+  });
+
+  const canvasToBlob = (canvas) => new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("이미지를 웹용으로 바꾸지 못했습니다."));
+    }, "image/webp", 0.8);
+  });
+
+  const makeThumbnailDataUrl = async (file) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!file || !allowedTypes.includes(file.type)) throw new Error("JPG, PNG 또는 WebP 이미지 파일을 선택해 주세요.");
+    if (file.size > MAX_THUMBNAIL_INPUT_BYTES) throw new Error("이미지 파일은 10 MB 이하로 선택해 주세요.");
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const image = await loadImage(objectUrl);
+      const originalSide = Math.max(image.naturalWidth, image.naturalHeight);
+      let targetSide = Math.min(MAX_THUMBNAIL_SIDE, originalSide);
+
+      while (targetSide >= MIN_THUMBNAIL_SIDE) {
+        const scale = targetSide / originalSide;
+        const width = Math.max(1, Math.round(image.naturalWidth * scale));
+        const height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("이미지를 준비하지 못했습니다. 다시 시도해 주세요.");
+        context.drawImage(image, 0, 0, width, height);
+        const webImage = await canvasToBlob(canvas);
+        if (webImage.size <= MAX_THUMBNAIL_OUTPUT_BYTES) return readAsDataUrl(webImage);
+        targetSide = Math.floor(targetSide * 0.72);
+      }
+      throw new Error("이미지가 너무 커서 저장할 수 없습니다. 더 작은 이미지를 선택해 주세요.");
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
+
+  const inspectThumbnailFile = async (file) => {
+    isProcessingThumbnail = true;
+    uploadedThumbnail = "";
+    thumbnailInput.setAttribute("aria-invalid", "false");
+    setThumbnailState("loading", `${file.name}을 대표 이미지로 준비하고 있습니다…`);
+    try {
+      uploadedThumbnail = await makeThumbnailDataUrl(file);
+      showThumbnailPreview(uploadedThumbnail);
+      setThumbnailState("valid", "대표 이미지 준비가 끝났습니다. 작품을 등록하면 함께 공개됩니다.");
+    } catch (error) {
+      thumbnailFileInput.value = "";
+      thumbnailPreview.removeAttribute("src");
+      thumbnailPreviewWrap.hidden = true;
+      setThumbnailState("error", error.message);
+    } finally {
+      isProcessingThumbnail = false;
+    }
+  };
 
   const setSaveMessage = (message) => {
     saveState.textContent = message;
@@ -552,6 +654,47 @@
     if (file) inspectZip(file);
   });
 
+  thumbnailFileInput.addEventListener("change", () => {
+    const [file] = thumbnailFileInput.files;
+    if (file) inspectThumbnailFile(file);
+  });
+
+  ["dragenter", "dragover"].forEach((eventName) => {
+    thumbnailDrop.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      thumbnailDrop.classList.add("is-over");
+    });
+  });
+  ["dragleave", "drop"].forEach((eventName) => {
+    thumbnailDrop.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      thumbnailDrop.classList.remove("is-over");
+    });
+  });
+  thumbnailDrop.addEventListener("drop", (event) => {
+    const [file] = event.dataTransfer.files;
+    if (file) inspectThumbnailFile(file);
+  });
+
+  thumbnailInput.addEventListener("input", () => {
+    uploadedThumbnail = "";
+    const source = thumbnailInput.value.trim();
+    if (!source) {
+      thumbnailPreview.removeAttribute("src");
+      thumbnailPreviewWrap.hidden = true;
+      setThumbnailState("idle", "파일을 넣으면 대표 이미지로 바로 사용할 수 있습니다.");
+      return;
+    }
+    showThumbnailPreview(source);
+    setThumbnailState("idle", "입력한 이미지 링크를 대표 이미지로 사용합니다.");
+  });
+
+  thumbnailPreview.addEventListener("error", () => {
+    if (uploadedThumbnail) return;
+    thumbnailPreviewWrap.hidden = true;
+    setThumbnailState("error", "이미지를 미리 볼 수 없습니다. 링크를 다시 확인해 주세요.");
+  });
+
   const categoryDefaults = {
     live2d: "움직이는 캐릭터",
     youtube: "작업 영상",
@@ -603,8 +746,14 @@
     const fields = [typeInput, categoryInput, titleInput, thumbnailInput];
     if (type === "youtube") fields.push(videoInput);
     if (type === "image") fields.push(imageInput);
-    const invalid = fields.find((field) => !field.value.trim());
-    fields.forEach((field) => field.setAttribute("aria-invalid", String(!field.value.trim())));
+    if (isProcessingThumbnail) {
+      formError.textContent = "대표 이미지를 준비하는 중입니다. 잠시만 기다려 주세요.";
+      return;
+    }
+    const hasThumbnail = Boolean(uploadedThumbnail || thumbnailInput.value.trim());
+    const isEmpty = (field) => field === thumbnailInput ? !hasThumbnail : !field.value.trim();
+    const invalid = fields.find(isEmpty);
+    fields.forEach((field) => field.setAttribute("aria-invalid", String(isEmpty(field))));
     if (invalid) {
       formError.textContent = "필수 정보가 비어 있습니다. 표시된 항목을 입력해 주세요.";
       invalid.focus();
@@ -625,12 +774,13 @@
 
     const title = titleInput.value.trim();
     const slug = slugify(title);
+    const thumbnail = uploadedThumbnail || thumbnailInput.value.trim();
     const item = {
       id: `${slug}-${Date.now().toString(36)}`,
       type,
       kind: categoryInput.value.trim(),
       title,
-      thumbnail: thumbnailInput.value.trim(),
+      thumbnail,
       thumbnailAlt: `${title} 선택`,
       published: publishedInput.checked
     };
@@ -653,6 +803,7 @@
     typeInput.value = "live2d";
     publishedInput.checked = true;
     pendingZip = null;
+    clearThumbnailUpload();
     renderZipReport("idle", "파일을 선택하면 공개에 필요한 파일이 있는지 확인합니다.");
     updateTypeFields();
     titleInput.focus({ preventScroll: true });
