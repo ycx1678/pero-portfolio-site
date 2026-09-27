@@ -41,6 +41,7 @@
   const undoAction = document.querySelector("[data-undo-action]");
   const typeFields = [...document.querySelectorAll("[data-field]")];
   const settingsApi = window.PERO_SITE_SETTINGS;
+  const portfolioApi = window.PERO_PORTFOLIO_API;
   const settingsForm = document.querySelector("#site-settings-form");
   const textSettingInputs = [...document.querySelectorAll("[data-text-setting]")];
   const colorSettingInputs = [...document.querySelectorAll("[data-color-setting]")];
@@ -49,6 +50,11 @@
   const settingsError = document.querySelector("[data-settings-error]");
   const contrastReport = document.querySelector("[data-contrast-report]");
   const resetSettingsButton = document.querySelector("[data-reset-settings]");
+  const authForm = document.querySelector("[data-admin-auth]");
+  const passwordInput = document.querySelector("[data-admin-password]");
+  const signOutButton = document.querySelector("[data-admin-sign-out]");
+  const connectionState = document.querySelector("[data-admin-connection]");
+  const ADMIN_SESSION_KEY = "pero-portfolio-admin-password-v1";
 
   let items = [];
   let pendingZip = null;
@@ -57,6 +63,19 @@
   let undoTimer = 0;
   let saveTimer = 0;
   let defaultColors = null;
+
+  const getAdminPassword = () => sessionStorage.getItem(ADMIN_SESSION_KEY) || "";
+
+  const setConnectionState = (message) => {
+    connectionState.textContent = message;
+    signOutButton.hidden = !getAdminPassword();
+  };
+
+  const currentCloudState = () => ({
+    schemaVersion: 1,
+    items,
+    siteSettings: settingsApi.load()
+  });
 
   const formatBytes = (bytes) => new Intl.NumberFormat("ko-KR", {
     style: "unit",
@@ -72,13 +91,27 @@
     }, 1800);
   };
 
-  const persist = async (message = "변경 내용을 브라우저에 저장했습니다.") => {
+  const persist = async (message = "변경 내용을 저장했습니다.") => {
     try {
       await storageAdapter.save({ schemaVersion: 1, items });
-      setSaveMessage(message);
+      const password = getAdminPassword();
+      if (!portfolioApi?.configured || !password) {
+        setSaveMessage(`${message} Cloudflare 연결 전이라 이 브라우저에만 저장했습니다.`);
+        return false;
+      }
+
+      await portfolioApi.save(currentCloudState(), password);
+      setSaveMessage(`${message} 공개 포트폴리오에 반영했습니다.`);
+      setConnectionState("Cloudflare에 연결됨 · 저장할 때마다 공개 포트폴리오에 반영됩니다.");
+      return true;
     } catch (error) {
       console.error("Portfolio state save failed", error);
-      saveState.textContent = "브라우저 저장 공간을 사용할 수 없어 변경 내용을 저장하지 못했습니다.";
+      if (/authentication/i.test(error.message)) {
+        sessionStorage.removeItem(ADMIN_SESSION_KEY);
+        setConnectionState("비밀번호가 맞지 않습니다. 다시 입력해 주세요.");
+      }
+      saveState.textContent = "Cloudflare에 변경 내용을 저장하지 못했습니다. 현재 브라우저의 임시 저장값은 유지됩니다.";
+      return false;
     }
   };
 
@@ -212,7 +245,7 @@
     });
   });
 
-  settingsForm.addEventListener("submit", (event) => {
+  settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     settingsError.textContent = "";
 
@@ -237,25 +270,28 @@
 
     try {
       settingsApi.save({ schemaVersion: 1, text: readTextSettings(), colors });
-      settingsState.textContent = "문구와 색상을 저장했습니다.";
+      const published = await persist("문구와 색상을 저장했습니다.");
+      settingsState.textContent = published ? "문구와 색상을 공개 포트폴리오에 반영했습니다." : "문구와 색상을 이 브라우저에 저장했습니다.";
     } catch (error) {
       console.error("Site settings save failed", error);
-      settingsError.textContent = "브라우저 저장 공간을 사용할 수 없어 페이지 설정을 저장하지 못했습니다.";
+      settingsError.textContent = "페이지 설정을 저장하지 못했습니다. Cloudflare 연결 상태를 확인해 주세요.";
     }
   });
 
-  resetSettingsButton.addEventListener("click", () => {
+  resetSettingsButton.addEventListener("click", async () => {
     const previous = settingsApi.load();
     const defaults = settingsApi.reset();
     populateSettingsForm({ ...defaults, colors: defaultColors });
     evaluateContrast(defaultColors);
-    settingsState.textContent = "기본 문구와 색상으로 되돌렸습니다.";
+    const published = await persist("기본 문구와 색상으로 되돌렸습니다.");
+    settingsState.textContent = published ? "기본 문구와 색상을 공개 포트폴리오에 반영했습니다." : "기본 문구와 색상을 이 브라우저에 저장했습니다.";
     settingsError.textContent = "";
     showUndo("페이지 설정을 기본값으로 되돌렸습니다.", async () => {
       const restored = settingsApi.save(previous);
       populateSettingsForm(restored);
       evaluateContrast(completeColors(restored.colors) ? restored.colors : defaultColors);
-      settingsState.textContent = "이전 페이지 설정을 복원했습니다.";
+      const restoredPublished = await persist("이전 페이지 설정을 복원했습니다.");
+      settingsState.textContent = restoredPublished ? "이전 페이지 설정을 공개 포트폴리오에 반영했습니다." : "이전 페이지 설정을 이 브라우저에 저장했습니다.";
     });
   });
 
@@ -670,16 +706,73 @@
     });
   });
 
+  const loadCloudState = async ({ preferLocal = false } = {}) => {
+    if (!portfolioApi?.configured) {
+      setConnectionState("Cloudflare API를 준비하는 중입니다.");
+      return;
+    }
+
+    const cloudState = await portfolioApi.read();
+    if (!cloudState) {
+      setConnectionState(getAdminPassword()
+        ? "Cloudflare에 아직 공개 데이터가 없습니다. 저장하면 첫 공개본이 생성됩니다."
+        : "비밀번호를 연결하면 변경 사항을 Cloudflare에 공개합니다.");
+      return;
+    }
+
+    if (!preferLocal && Array.isArray(cloudState.items)) items = clone(cloudState.items);
+    if (!preferLocal && cloudState.siteSettings) settingsApi.save(cloudState.siteSettings);
+    if (preferLocal) {
+      setConnectionState("이 브라우저의 기존 변경 사항을 유지했습니다. 비밀번호를 연결하면 공개 포트폴리오에 반영합니다.");
+    } else {
+      setConnectionState(getAdminPassword()
+        ? "Cloudflare에 연결됨 · 최신 공개 데이터를 불러왔습니다."
+        : "최신 공개 데이터를 불러왔습니다. 비밀번호를 연결하면 수정할 수 있습니다.");
+    }
+  };
+
+  authForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const password = passwordInput.value;
+    if (!password) {
+      passwordInput.setAttribute("aria-invalid", "true");
+      setConnectionState("관리자 비밀번호를 입력해 주세요.");
+      passwordInput.focus();
+      return;
+    }
+
+    sessionStorage.setItem(ADMIN_SESSION_KEY, password);
+    passwordInput.value = "";
+    passwordInput.setAttribute("aria-invalid", "false");
+    setConnectionState("Cloudflare에 연결하는 중입니다…");
+    const published = await persist("현재 관리자 상태를 저장했습니다.");
+    if (published) setConnectionState("Cloudflare에 연결됨 · 저장할 때마다 공개 포트폴리오에 반영됩니다.");
+  });
+
+  signOutButton.addEventListener("click", () => {
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    setConnectionState("연결을 해제했습니다. 이후 변경 사항은 이 브라우저에만 저장됩니다.");
+  });
+
   const initialize = async () => {
     const savedSettings = settingsApi.load();
     settingsApi.clearColors();
     defaultColors = readThemeColors();
     settingsApi.applyColors(savedSettings.colors);
-    populateSettingsForm(savedSettings);
-    evaluateContrast(completeColors(savedSettings.colors) ? savedSettings.colors : defaultColors);
 
     const saved = await storageAdapter.load();
     items = Array.isArray(saved?.items) ? saved.items : clone(window.PERO_PORTFOLIO_ITEMS || []);
+    const hasLocalDraft = Array.isArray(saved?.items) || Boolean(localStorage.getItem(settingsApi.STORAGE_KEY));
+    try {
+      await loadCloudState({ preferLocal: hasLocalDraft && !getAdminPassword() });
+    } catch (error) {
+      console.error("Cloud portfolio state could not be loaded", error);
+      setConnectionState("Cloudflare 데이터를 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
+    }
+
+    const activeSettings = settingsApi.load();
+    populateSettingsForm(activeSettings);
+    evaluateContrast(completeColors(activeSettings.colors) ? activeSettings.colors : defaultColors);
     renderList();
     updateTypeFields();
   };

@@ -8,6 +8,7 @@
     }
   });
 
+  const start = () => {
   const items = (window.PERO_PORTFOLIO_ITEMS || []).filter((item) => item.published !== false);
 
   if (!root || !items.length) return;
@@ -75,14 +76,22 @@
     });
   };
 
+  const escapeHtml = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    "\"": "&quot;"
+  })[character]);
+
   const renderRail = () => {
     rail.innerHTML = items.map((item, index) => `
-      <button class="portfolio-thumb" type="button" role="option" aria-selected="${index === 0}" aria-label="${item.title}" data-portfolio-index="${index}" tabindex="${index === 0 ? 0 : -1}">
+      <button class="portfolio-thumb" type="button" role="option" aria-selected="${index === 0}" aria-label="${escapeHtml(item.title)}" data-portfolio-index="${index}" tabindex="${index === 0 ? 0 : -1}">
         <span class="portfolio-thumb__image">
-          <img src="${item.thumbnail}" width="320" height="240" alt="${item.thumbnailAlt}" loading="lazy">
+          <img src="${escapeHtml(item.thumbnail)}" width="320" height="240" alt="${escapeHtml(item.thumbnailAlt)}" loading="lazy">
           <span class="portfolio-thumb__type">${item.type === "live2d" ? "LIVE" : item.type === "youtube" ? "FILM" : "STILL"}</span>
         </span>
-        <span class="portfolio-thumb__title">${item.title}</span>
+        <span class="portfolio-thumb__title">${escapeHtml(item.title)}</span>
       </button>
     `).join("");
   };
@@ -295,4 +304,9 @@
 
   retry.addEventListener("click", () => loadModel(true).catch(() => {}));
   showItem(0, false);
+  };
+
+  const remoteState = window.PERO_PORTFOLIO_STATE_READY;
+  if (remoteState?.then) remoteState.finally(start);
+  else start();
 })();

@@ -179,6 +179,20 @@
     applyText(initial.text);
   }
 
+  const remoteState = window.PERO_PORTFOLIO_REMOTE_STATE;
+  remoteState?.then((state) => {
+    if (!state?.siteSettings) return;
+    const isAdminPage = /\/admin(?:\.html)?$/.test(window.location.pathname);
+    if (isAdminPage && localStorage.getItem(STORAGE_KEY)) return;
+    const remoteSettings = normalize(state.siteSettings);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteSettings));
+    } catch (error) {
+      console.warn("Cloud site settings could not be cached", error);
+    }
+    apply(remoteSettings);
+  }).catch(() => {});
+
   window.addEventListener("storage", (event) => {
     if (event.key === STORAGE_KEY) apply(load());
   });
