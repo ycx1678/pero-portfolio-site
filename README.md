@@ -2,7 +2,7 @@
 
 Public files for the PERO Live2D portfolio and its local-only administrator prototype, published with GitHub Pages.
 
-The administrator page is available at `/admin/`. Its changes are stored only in the browser that makes them; it does not provide shared accounts or server-side publishing.
+The administrator page is available at `/admin/`. Its work list, ordering, visibility, copy, and colors are reflected in the portfolio when both pages are opened in the same browser. It does not provide shared accounts or server-side publishing, so other devices and visitors continue to see the deployed defaults.
 
 ## Artmug iframe
 

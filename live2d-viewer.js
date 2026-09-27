@@ -1,5 +1,13 @@
 (() => {
   const root = document.querySelector("[data-portfolio-workbench]");
+  // The administrator saves the work order in the same-origin browser store.
+  // Refresh open portfolio tabs as soon as that order changes in another tab.
+  window.addEventListener("storage", (event) => {
+    if (event.key === "pero-portfolio-admin-v1") {
+      window.location.reload();
+    }
+  });
+
   const items = (window.PERO_PORTFOLIO_ITEMS || []).filter((item) => item.published !== false);
 
   if (!root || !items.length) return;
