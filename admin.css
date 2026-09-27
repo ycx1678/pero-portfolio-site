@@ -102,7 +102,8 @@
   font-size: var(--text-sm);
 }
 
-.admin-auth {
+.admin-auth,
+.admin-password-change {
   display: grid;
   gap: var(--space-sm);
   margin-block: calc(-1 * var(--space-sm)) var(--space-xl);
@@ -111,13 +112,15 @@
   background: var(--color-paper);
 }
 
-.admin-auth label {
+.admin-auth label,
+.admin-password-change label {
   align-self: center;
   font-size: var(--text-sm);
   font-weight: 900;
 }
 
-.admin-auth input {
+.admin-auth input,
+.admin-password-change input {
   min-width: 0;
   min-height: 2.75rem;
   padding-inline: var(--space-sm);
@@ -128,7 +131,8 @@
   font: inherit;
 }
 
-.admin-auth button {
+.admin-auth button,
+.admin-password-change button {
   min-height: 2.75rem;
   padding-inline: var(--space-md);
   border: var(--rule-heavy) solid var(--color-ink);
@@ -144,7 +148,8 @@
   background: var(--color-paper);
 }
 
-.admin-auth p {
+.admin-auth p,
+.admin-password-change p {
   grid-column: 1 / -1;
   min-height: 1lh;
   margin: 0;
@@ -812,7 +817,8 @@
     grid-template-columns: minmax(0, 1.2fr) minmax(16rem, 0.8fr);
   }
 
-  .admin-auth {
+  .admin-auth,
+  .admin-password-change {
     grid-template-columns: auto minmax(14rem, 1fr) auto auto;
     align-items: center;
   }

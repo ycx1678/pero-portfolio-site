@@ -54,6 +54,9 @@
   const passwordInput = document.querySelector("[data-admin-password]");
   const signOutButton = document.querySelector("[data-admin-sign-out]");
   const connectionState = document.querySelector("[data-admin-connection]");
+  const passwordChangeForm = document.querySelector("[data-admin-password-change]");
+  const newPasswordInput = document.querySelector("[data-admin-new-password]");
+  const passwordChangeState = document.querySelector("[data-admin-password-change-state]");
   const ADMIN_SESSION_KEY = "pero-portfolio-admin-password-v1";
 
   let items = [];
@@ -68,7 +71,10 @@
 
   const setConnectionState = (message) => {
     connectionState.textContent = message;
-    signOutButton.hidden = !getAdminPassword();
+    const isConnected = Boolean(getAdminPassword());
+    signOutButton.hidden = !isConnected;
+    passwordChangeForm.hidden = !isConnected;
+    if (!isConnected) passwordChangeState.textContent = "Cloudflare에 연결하면 새 비밀번호를 설정할 수 있습니다.";
   };
 
   const currentCloudState = () => ({
@@ -747,6 +753,39 @@
     setConnectionState("Cloudflare에 연결하는 중입니다…");
     const published = await persist("현재 관리자 상태를 저장했습니다.");
     if (published) setConnectionState("Cloudflare에 연결됨 · 저장할 때마다 공개 포트폴리오에 반영됩니다.");
+  });
+
+  passwordChangeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const currentPassword = getAdminPassword();
+    const newPassword = newPasswordInput.value;
+    if (!currentPassword) {
+      setConnectionState("먼저 관리자 비밀번호로 Cloudflare에 연결해 주세요.");
+      return;
+    }
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      newPasswordInput.setAttribute("aria-invalid", "true");
+      passwordChangeState.textContent = "새 비밀번호는 8~128자로 입력해 주세요.";
+      newPasswordInput.focus();
+      return;
+    }
+
+    newPasswordInput.setAttribute("aria-invalid", "false");
+    passwordChangeState.textContent = "새 비밀번호를 저장하는 중입니다…";
+    try {
+      await portfolioApi.changePassword(currentPassword, newPassword);
+      sessionStorage.setItem(ADMIN_SESSION_KEY, newPassword);
+      newPasswordInput.value = "";
+      passwordChangeState.textContent = "새 비밀번호로 변경했습니다. 이 브라우저도 새 비밀번호로 연결되어 있습니다.";
+      setConnectionState("Cloudflare에 연결됨 · 저장할 때마다 공개 포트폴리오에 반영됩니다.");
+    } catch (error) {
+      console.error("Administrator password change failed", error);
+      if (/authentication/i.test(error.message)) {
+        sessionStorage.removeItem(ADMIN_SESSION_KEY);
+        setConnectionState("현재 비밀번호가 맞지 않습니다. 다시 연결해 주세요.");
+      }
+      passwordChangeState.textContent = "비밀번호를 바꾸지 못했습니다. 현재 연결 상태를 확인해 주세요.";
+    }
   });
 
   signOutButton.addEventListener("click", () => {
