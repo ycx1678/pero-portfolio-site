@@ -1,8 +1,8 @@
 # PERO Live2D Portfolio
 
-Public files for the PERO Live2D portfolio, published with GitHub Pages.
+Public files for the PERO Live2D portfolio and its local-only administrator prototype, published with GitHub Pages.
 
-The project source and local-only administrator prototype are intentionally kept out of this repository.
+The administrator page is available at `/admin/`. Its changes are stored only in the browser that makes them; it does not provide shared accounts or server-side publishing.
 
 ## Artmug iframe
 
