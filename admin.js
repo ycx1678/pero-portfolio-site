@@ -321,6 +321,20 @@
     return button;
   };
 
+  const typeLabels = {
+    live2d: "Live2D 모델",
+    youtube: "영상",
+    image: "이미지"
+  };
+
+  const kindLabels = {
+    "INTERACTIVE LIVE2D": "움직이는 캐릭터",
+    "RIGGING FILM": "작업 영상",
+    "PARTS SEPARATION": "파츠 분리",
+    "CHARACTER DESIGN": "캐릭터 디자인",
+    "CHARACTER SHEET": "캐릭터 설정표"
+  };
+
   const renderList = () => {
     list.replaceChildren();
     items.forEach((item, index) => {
@@ -345,7 +359,7 @@
       const strong = document.createElement("strong");
       strong.textContent = item.title;
       const meta = document.createElement("span");
-      meta.textContent = `${item.type.toUpperCase()} · ${item.kind || "미분류"}`;
+      meta.textContent = `${typeLabels[item.type] || "작품"} · ${kindLabels[item.kind] || item.kind || "짧은 설명 없음"}`;
       name.append(strong, meta);
       const number = document.createElement("span");
       number.className = "admin-item__index";
@@ -423,9 +437,9 @@
   };
 
   const validateModelZip = async (file) => {
-    if (!window.JSZip) throw new Error("ZIP 검사 도구를 불러오지 못했습니다. 네트워크 연결을 확인해 주세요.");
-    if (!file?.name.toLowerCase().endsWith(".zip")) throw new Error("ZIP 형식의 파일을 선택해 주세요.");
-    if (file.size > MAX_ZIP_BYTES) throw new Error("ZIP 크기가 200 MB를 넘습니다. 공개용 텍스처 크기를 줄여 주세요.");
+    if (!window.JSZip) throw new Error("파일 확인 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.");
+    if (!file?.name.toLowerCase().endsWith(".zip")) throw new Error("압축(.zip) 파일을 선택해 주세요.");
+    if (file.size > MAX_ZIP_BYTES) throw new Error("파일 크기가 200 MB를 넘습니다. 이미지 크기를 줄인 뒤 다시 시도해 주세요.");
 
     const archive = await window.JSZip.loadAsync(file);
     const entries = Object.values(archive.files).filter((entry) => !entry.dir);
@@ -442,7 +456,7 @@
     const fileNames = new Set(entries.map((entry) => normalizeArchivePath(entry.name)));
     const modelEntries = entries.filter((entry) => entry.name.toLowerCase().endsWith(".model3.json"));
     if (modelEntries.length !== 1) {
-      throw new Error(`.model3.json은 1개여야 합니다. 현재 ${modelEntries.length}개가 들어 있습니다.`);
+      throw new Error(`모델 설정 파일은 1개여야 합니다. 현재 ${modelEntries.length}개가 들어 있습니다.`);
     }
 
     const modelEntry = modelEntries[0];
@@ -450,12 +464,12 @@
     try {
       modelJson = JSON.parse(await modelEntry.async("string"));
     } catch {
-      throw new Error(".model3.json을 읽을 수 없습니다. JSON 문법을 확인해 주세요.");
+      throw new Error("모델 설정 파일을 읽을 수 없습니다. 파일을 다시 확인해 주세요.");
     }
 
     const references = modelJson.FileReferences || {};
-    if (!references.Moc?.toLowerCase().endsWith(".moc3")) throw new Error("FileReferences.Moc에 .moc3 파일이 지정되어 있지 않습니다.");
-    if (!Array.isArray(references.Textures) || !references.Textures.length) throw new Error("FileReferences.Textures에 공개용 텍스처가 없습니다.");
+    if (!references.Moc?.toLowerCase().endsWith(".moc3")) throw new Error("필요한 모델 파일(.moc3)을 찾을 수 없습니다.");
+    if (!Array.isArray(references.Textures) || !references.Textures.length) throw new Error("모델에 필요한 이미지 파일을 찾을 수 없습니다.");
 
     const modelPath = normalizeArchivePath(modelEntry.name);
     const slash = modelPath.lastIndexOf("/");
@@ -466,7 +480,7 @@
     const missing = resolved.filter((path) => !fileNames.has(path));
     if (missing.length) {
       const preview = missing.slice(0, 4).join(", ");
-      throw new Error(`모델 JSON이 가리키지만 ZIP에 없는 파일이 있습니다: ${preview}${missing.length > 4 ? " 외" : ""}`);
+      throw new Error(`모델이 필요로 하는 파일이 압축 파일 안에 없습니다: ${preview}${missing.length > 4 ? " 외" : ""}`);
     }
 
     const expressions = (references.Expressions || []).map((entry) => entry.Name).filter(Boolean);
@@ -503,13 +517,13 @@
 
   const inspectZip = async (file) => {
     pendingZip = null;
-    renderZipReport("loading", `${file.name}의 파일 구조를 검사하는 중입니다…`);
+    renderZipReport("loading", `${file.name}을 확인하고 있습니다…`);
     try {
       pendingZip = await validateModelZip(file);
-      renderZipReport("valid", "공개용 모델 구조를 확인했습니다.", [
-        `모델: ${pendingZip.modelPath}`,
-        `텍스처 ${pendingZip.textureCount}개 · 모션 ${pendingZip.motionCount}개 · 표정 ${pendingZip.expressionCount}개`,
-        `전체 ${pendingZip.fileCount}개 파일 · ${formatBytes(pendingZip.size)}`
+      renderZipReport("valid", "공개에 필요한 파일을 확인했습니다.", [
+        `모델 이름: ${pendingZip.modelName}`,
+        `이미지 ${pendingZip.textureCount}개 · 움직임 ${pendingZip.motionCount}개 · 표정 ${pendingZip.expressionCount}개`,
+        `파일 ${pendingZip.fileCount}개 · ${formatBytes(pendingZip.size)}`
       ]);
     } catch (error) {
       renderZipReport("error", error.message);
@@ -539,9 +553,9 @@
   });
 
   const categoryDefaults = {
-    live2d: "INTERACTIVE LIVE2D",
-    youtube: "RIGGING FILM",
-    image: "CHARACTER DESIGN"
+    live2d: "움직이는 캐릭터",
+    youtube: "작업 영상",
+    image: "일러스트"
   };
 
   const updateTypeFields = () => {
@@ -564,6 +578,23 @@
     .replace(/[^a-z0-9가-힣]+/g, "-")
     .replace(/^-|-$/g, "") || "work";
 
+  const getYouTubeVideoId = (value) => {
+    const input = value.trim();
+    try {
+      const url = new URL(input);
+      const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+      if (host === "youtu.be") return url.pathname.split("/").filter(Boolean)[0] || "";
+      if (host.endsWith("youtube.com")) {
+        if (url.pathname === "/watch") return url.searchParams.get("v") || "";
+        const [section, videoId] = url.pathname.split("/").filter(Boolean);
+        if (["shorts", "embed", "live"].includes(section)) return videoId || "";
+      }
+    } catch {
+      // Existing saved video IDs remain supported for people who already have one.
+    }
+    return /^[a-zA-Z0-9_-]{6,}$/.test(input) ? input : "";
+  };
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     formError.textContent = "";
@@ -579,8 +610,15 @@
       invalid.focus();
       return;
     }
+    const videoId = type === "youtube" ? getYouTubeVideoId(videoInput.value) : "";
+    if (type === "youtube" && !videoId) {
+      videoInput.setAttribute("aria-invalid", "true");
+      formError.textContent = "YouTube 영상 링크를 확인해 주세요.";
+      videoInput.focus();
+      return;
+    }
     if (type === "live2d" && !pendingZip) {
-      formError.textContent = "검사를 통과한 웹 공개용 모델 ZIP을 먼저 선택해 주세요.";
+      formError.textContent = "확인을 마친 Live2D 모델 파일을 먼저 선택해 주세요.";
       zipDrop.focus();
       return;
     }
@@ -597,7 +635,7 @@
       published: publishedInput.checked
     };
 
-    if (type === "youtube") item.videoId = videoInput.value.trim();
+    if (type === "youtube") item.videoId = videoId;
     if (type === "image") {
       item.image = imageInput.value.trim();
       item.imageAlt = `${title} 작업 이미지`;
@@ -615,7 +653,7 @@
     typeInput.value = "live2d";
     publishedInput.checked = true;
     pendingZip = null;
-    renderZipReport("idle", "파일을 선택하면 모델 구성과 경로를 검사합니다.");
+    renderZipReport("idle", "파일을 선택하면 공개에 필요한 파일이 있는지 확인합니다.");
     updateTypeFields();
     titleInput.focus({ preventScroll: true });
   });
@@ -705,10 +743,10 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "pero-portfolio.json";
+    link.download = "pero-portfolio-backup.json";
     link.click();
     URL.revokeObjectURL(url);
-    setSaveMessage("공개용 JSON 파일을 내보냈습니다.");
+    setSaveMessage("작품 목록 백업 파일을 받았습니다.");
   });
 
   document.querySelector("[data-reset-sample]").addEventListener("click", async () => {
