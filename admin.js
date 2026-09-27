@@ -50,14 +50,17 @@
   const settingsError = document.querySelector("[data-settings-error]");
   const contrastReport = document.querySelector("[data-contrast-report]");
   const resetSettingsButton = document.querySelector("[data-reset-settings]");
-  const authForm = document.querySelector("[data-admin-auth]");
+  const loginShell = document.querySelector("[data-admin-login-shell]");
+  const adminApp = document.querySelector("[data-admin-app]");
+  const loginForm = document.querySelector("[data-admin-login]");
   const passwordInput = document.querySelector("[data-admin-password]");
   const signOutButton = document.querySelector("[data-admin-sign-out]");
-  const connectionState = document.querySelector("[data-admin-connection]");
+  const loginState = document.querySelector("[data-admin-login-state]");
   const passwordChangeForm = document.querySelector("[data-admin-password-change]");
   const newPasswordInput = document.querySelector("[data-admin-new-password]");
   const passwordChangeState = document.querySelector("[data-admin-password-change-state]");
-  const ADMIN_SESSION_KEY = "pero-portfolio-admin-password-v1";
+  const ADMIN_SESSION_KEY = "pero-portfolio-admin-session-v1";
+  const LEGACY_PASSWORD_KEY = "pero-portfolio-admin-password-v1";
 
   let items = [];
   let pendingZip = null;
@@ -67,14 +70,23 @@
   let saveTimer = 0;
   let defaultColors = null;
 
-  const getAdminPassword = () => sessionStorage.getItem(ADMIN_SESSION_KEY) || "";
+  const getAdminSession = () => sessionStorage.getItem(ADMIN_SESSION_KEY) || "";
+  const clearAdminSession = () => {
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    sessionStorage.removeItem(LEGACY_PASSWORD_KEY);
+  };
 
-  const setConnectionState = (message) => {
-    connectionState.textContent = message;
-    const isConnected = Boolean(getAdminPassword());
-    signOutButton.hidden = !isConnected;
-    passwordChangeForm.hidden = !isConnected;
-    if (!isConnected) passwordChangeState.textContent = "Cloudflare에 연결하면 새 비밀번호를 설정할 수 있습니다.";
+  const showLogin = (message = "관리자 비밀번호를 입력해 주세요.") => {
+    adminApp.hidden = true;
+    loginShell.hidden = false;
+    loginState.textContent = message;
+    passwordInput.value = "";
+    passwordChangeState.textContent = "로그인한 상태에서 새 비밀번호를 설정할 수 있습니다.";
+  };
+
+  const showAdmin = () => {
+    loginShell.hidden = true;
+    adminApp.hidden = false;
   };
 
   const currentCloudState = () => ({
@@ -100,23 +112,22 @@
   const persist = async (message = "변경 내용을 저장했습니다.") => {
     try {
       await storageAdapter.save({ schemaVersion: 1, items });
-      const password = getAdminPassword();
-      if (!portfolioApi?.configured || !password) {
-        setSaveMessage(`${message} Cloudflare 연결 전이라 이 브라우저에만 저장했습니다.`);
+      const sessionToken = getAdminSession();
+      if (!portfolioApi?.configured || !sessionToken) {
+        setSaveMessage(`${message} 로그인 상태가 아니라 이 브라우저에만 저장했습니다.`);
         return false;
       }
 
-      await portfolioApi.save(currentCloudState(), password);
+      await portfolioApi.save(currentCloudState(), sessionToken);
       setSaveMessage(`${message} 공개 포트폴리오에 반영했습니다.`);
-      setConnectionState("Cloudflare에 연결됨 · 저장할 때마다 공개 포트폴리오에 반영됩니다.");
       return true;
     } catch (error) {
       console.error("Portfolio state save failed", error);
       if (/authentication/i.test(error.message)) {
-        sessionStorage.removeItem(ADMIN_SESSION_KEY);
-        setConnectionState("비밀번호가 맞지 않습니다. 다시 입력해 주세요.");
+        clearAdminSession();
+        showLogin("로그인 시간이 만료되었습니다. 다시 로그인해 주세요.");
       }
-      saveState.textContent = "Cloudflare에 변경 내용을 저장하지 못했습니다. 현재 브라우저의 임시 저장값은 유지됩니다.";
+      saveState.textContent = "변경 내용을 저장하지 못했습니다. 현재 브라우저의 임시 저장값은 유지됩니다.";
       return false;
     }
   };
@@ -280,7 +291,7 @@
       settingsState.textContent = published ? "문구와 색상을 공개 포트폴리오에 반영했습니다." : "문구와 색상을 이 브라우저에 저장했습니다.";
     } catch (error) {
       console.error("Site settings save failed", error);
-      settingsError.textContent = "페이지 설정을 저장하지 못했습니다. Cloudflare 연결 상태를 확인해 주세요.";
+      settingsError.textContent = "페이지 설정을 저장하지 못했습니다. 로그인 상태를 확인해 주세요.";
     }
   });
 
@@ -712,55 +723,52 @@
     });
   });
 
-  const loadCloudState = async ({ preferLocal = false } = {}) => {
-    if (!portfolioApi?.configured) {
-      setConnectionState("Cloudflare API를 준비하는 중입니다.");
+  const loadPublishedState = async () => {
+    if (!portfolioApi?.configured) throw new Error("The portfolio API is not configured.");
+    const publishedState = await portfolioApi.read();
+    if (!publishedState) {
+      setSaveMessage("아직 공개된 데이터가 없습니다. 첫 저장 시 공개 포트폴리오가 생성됩니다.");
       return;
     }
 
-    const cloudState = await portfolioApi.read();
-    if (!cloudState) {
-      setConnectionState(getAdminPassword()
-        ? "Cloudflare에 아직 공개 데이터가 없습니다. 저장하면 첫 공개본이 생성됩니다."
-        : "비밀번호를 연결하면 변경 사항을 Cloudflare에 공개합니다.");
-      return;
-    }
-
-    if (!preferLocal && Array.isArray(cloudState.items)) items = clone(cloudState.items);
-    if (!preferLocal && cloudState.siteSettings) settingsApi.save(cloudState.siteSettings);
-    if (preferLocal) {
-      setConnectionState("이 브라우저의 기존 변경 사항을 유지했습니다. 비밀번호를 연결하면 공개 포트폴리오에 반영합니다.");
-    } else {
-      setConnectionState(getAdminPassword()
-        ? "Cloudflare에 연결됨 · 최신 공개 데이터를 불러왔습니다."
-        : "최신 공개 데이터를 불러왔습니다. 비밀번호를 연결하면 수정할 수 있습니다.");
-    }
+    if (Array.isArray(publishedState.items)) items = clone(publishedState.items);
+    if (publishedState.siteSettings) settingsApi.save(publishedState.siteSettings);
+    setSaveMessage("최신 공개 포트폴리오를 불러왔습니다.");
   };
 
-  authForm.addEventListener("submit", async (event) => {
+  loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const password = passwordInput.value;
     if (!password) {
       passwordInput.setAttribute("aria-invalid", "true");
-      setConnectionState("관리자 비밀번호를 입력해 주세요.");
+      loginState.textContent = "비밀번호를 입력해 주세요.";
       passwordInput.focus();
       return;
     }
 
-    sessionStorage.setItem(ADMIN_SESSION_KEY, password);
-    passwordInput.value = "";
     passwordInput.setAttribute("aria-invalid", "false");
-    setConnectionState("Cloudflare에 연결하는 중입니다…");
-    const published = await persist("현재 관리자 상태를 저장했습니다.");
-    if (published) setConnectionState("Cloudflare에 연결됨 · 저장할 때마다 공개 포트폴리오에 반영됩니다.");
+    loginState.textContent = "로그인하는 중입니다…";
+    try {
+      const session = await portfolioApi.login(password);
+      sessionStorage.setItem(ADMIN_SESSION_KEY, session.token);
+      passwordInput.value = "";
+      showAdmin();
+      await initialize();
+    } catch (error) {
+      console.error("Administrator login failed", error);
+      clearAdminSession();
+      loginState.textContent = "비밀번호가 맞지 않거나 로그인할 수 없습니다.";
+      passwordInput.focus();
+    }
   });
 
   passwordChangeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const currentPassword = getAdminPassword();
+    const sessionToken = getAdminSession();
     const newPassword = newPasswordInput.value;
-    if (!currentPassword) {
-      setConnectionState("먼저 관리자 비밀번호로 Cloudflare에 연결해 주세요.");
+    if (!sessionToken) {
+      clearAdminSession();
+      showLogin("로그인 시간이 만료되었습니다. 다시 로그인해 주세요.");
       return;
     }
     if (newPassword.length < 8 || newPassword.length > 128) {
@@ -773,24 +781,29 @@
     newPasswordInput.setAttribute("aria-invalid", "false");
     passwordChangeState.textContent = "새 비밀번호를 저장하는 중입니다…";
     try {
-      await portfolioApi.changePassword(currentPassword, newPassword);
-      sessionStorage.setItem(ADMIN_SESSION_KEY, newPassword);
+      const session = await portfolioApi.changePassword(sessionToken, newPassword);
+      sessionStorage.setItem(ADMIN_SESSION_KEY, session.token);
       newPasswordInput.value = "";
-      passwordChangeState.textContent = "새 비밀번호로 변경했습니다. 이 브라우저도 새 비밀번호로 연결되어 있습니다.";
-      setConnectionState("Cloudflare에 연결됨 · 저장할 때마다 공개 포트폴리오에 반영됩니다.");
+      passwordChangeState.textContent = "새 비밀번호로 변경했습니다. 이 브라우저의 로그인은 유지됩니다.";
     } catch (error) {
       console.error("Administrator password change failed", error);
       if (/authentication/i.test(error.message)) {
-        sessionStorage.removeItem(ADMIN_SESSION_KEY);
-        setConnectionState("현재 비밀번호가 맞지 않습니다. 다시 연결해 주세요.");
+        clearAdminSession();
+        showLogin("로그인 시간이 만료되었습니다. 다시 로그인해 주세요.");
       }
-      passwordChangeState.textContent = "비밀번호를 바꾸지 못했습니다. 현재 연결 상태를 확인해 주세요.";
+      passwordChangeState.textContent = "비밀번호를 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.";
     }
   });
 
-  signOutButton.addEventListener("click", () => {
-    sessionStorage.removeItem(ADMIN_SESSION_KEY);
-    setConnectionState("연결을 해제했습니다. 이후 변경 사항은 이 브라우저에만 저장됩니다.");
+  signOutButton.addEventListener("click", async () => {
+    const sessionToken = getAdminSession();
+    try {
+      if (sessionToken && portfolioApi?.configured) await portfolioApi.signOut(sessionToken);
+    } catch (error) {
+      console.warn("Administrator logout request failed", error);
+    }
+    clearAdminSession();
+    showLogin("로그아웃했습니다.");
   });
 
   const initialize = async () => {
@@ -801,12 +814,11 @@
 
     const saved = await storageAdapter.load();
     items = Array.isArray(saved?.items) ? saved.items : clone(window.PERO_PORTFOLIO_ITEMS || []);
-    const hasLocalDraft = Array.isArray(saved?.items) || Boolean(localStorage.getItem(settingsApi.STORAGE_KEY));
     try {
-      await loadCloudState({ preferLocal: hasLocalDraft && !getAdminPassword() });
+      await loadPublishedState();
     } catch (error) {
-      console.error("Cloud portfolio state could not be loaded", error);
-      setConnectionState("Cloudflare 데이터를 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
+      console.error("Published portfolio state could not be loaded", error);
+      setSaveMessage("공개 포트폴리오를 불러오지 못했습니다. 잠시 후 다시 로그인해 주세요.");
     }
 
     const activeSettings = settingsApi.load();
@@ -816,5 +828,30 @@
     updateTypeFields();
   };
 
-  initialize();
+  const restoreSession = async () => {
+    sessionStorage.removeItem(LEGACY_PASSWORD_KEY);
+    const sessionToken = getAdminSession();
+    if (!sessionToken) {
+      showLogin();
+      return;
+    }
+    if (!portfolioApi?.configured) {
+      clearAdminSession();
+      showLogin("로그인 서비스를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+
+    loginState.textContent = "로그인 상태를 확인하는 중입니다…";
+    try {
+      await portfolioApi.session(sessionToken);
+      showAdmin();
+      await initialize();
+    } catch (error) {
+      console.warn("Administrator session could not be restored", error);
+      clearAdminSession();
+      showLogin("로그인 시간이 만료되었습니다. 다시 로그인해 주세요.");
+    }
+  };
+
+  restoreSession();
 })();

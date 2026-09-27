@@ -9,12 +9,28 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Jua&amp;family=Noto+Sans+KR:wght@400;700;800;900&amp;display=swap" rel="stylesheet">
-    <script src="portfolio-api.js?v=cloud-2"></script>
+    <script src="portfolio-api.js?v=cloud-3"></script>
     <script src="site-settings.js?v=cloud-1"></script>
     <link rel="stylesheet" href="tokens.css?v=live2d-3">
-    <link rel="stylesheet" href="admin.css?v=cloud-2">
+    <link rel="stylesheet" href="admin.css?v=cloud-3">
   </head>
   <body class="admin-page">
+    <section class="admin-login" data-admin-login-shell aria-labelledby="admin-login-title">
+      <div class="admin-login__card">
+        <p class="admin-login__eyebrow">PERO · ADMIN</p>
+        <h1 id="admin-login-title">관리자 로그인</h1>
+        <p>로그인하면 작품 순서와 공개 페이지 설정을 관리할 수 있습니다.</p>
+        <form class="admin-login__form" data-admin-login novalidate>
+          <label for="admin-password">비밀번호</label>
+          <input id="admin-password" data-admin-password type="password" autocomplete="current-password" minlength="8" required>
+          <button type="submit">로그인</button>
+          <p data-admin-login-state aria-live="polite">관리자 비밀번호를 입력해 주세요.</p>
+        </form>
+        <a href="index.html#work">공개 포트폴리오 보기 ↗</a>
+      </div>
+    </section>
+
+    <div data-admin-app hidden>
     <a class="skip-link" href="#admin-main">관리 화면으로 바로가기</a>
 
     <!-- Previous nav: N7. Admin uses N9 because one return action is enough. -->
@@ -26,30 +42,23 @@
     <main id="admin-main" class="admin-shell">
       <header class="admin-intro">
         <div>
-          <p class="admin-intro__state">CLOUDFLARE D1 · 공유 포트폴리오</p>
+          <p class="admin-intro__state">PERO · ADMINISTRATOR</p>
           <h1>작품을 올리고,<br>보이는 순서를 정합니다.</h1>
         </div>
-        <p>이미지·YouTube·Live2D 작품을 한 목록에서 관리합니다. Live2D ZIP은 공개용 파일 구조와 내부 참조까지 검사한 뒤 등록할 수 있습니다.</p>
+        <p>이미지·YouTube·Live2D 작품을 한 목록에서 관리합니다. 변경 내용을 저장하면 공개 포트폴리오에 반영됩니다.</p>
       </header>
 
       <aside class="admin-notice" aria-label="현재 저장 방식 안내">
-        <strong>현재 단계</strong>
-        <p>Cloudflare에 연결하면 저장한 작품 정보와 페이지 설정이 공개 포트폴리오에 반영됩니다.</p>
+        <strong>로그인됨</strong>
+        <p>이 페이지에서 저장한 작품 정보와 페이지 설정은 공개 포트폴리오에 반영됩니다.</p>
       </aside>
 
-      <form class="admin-auth" data-admin-auth novalidate>
-        <label for="admin-password">관리자 비밀번호</label>
-        <input id="admin-password" data-admin-password type="password" autocomplete="current-password" required>
-        <button type="submit">Cloudflare 연결</button>
-        <button type="button" data-admin-sign-out hidden>연결 해제</button>
-        <p data-admin-connection aria-live="polite">비밀번호를 연결하면 변경 사항을 모든 방문자에게 공개합니다.</p>
-      </form>
-
-      <form class="admin-password-change" data-admin-password-change hidden novalidate>
+      <form class="admin-password-change" data-admin-password-change novalidate>
         <label for="admin-new-password">새 관리자 비밀번호</label>
         <input id="admin-new-password" data-admin-new-password type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
         <button type="submit">비밀번호 변경</button>
-        <p data-admin-password-change-state aria-live="polite">Cloudflare에 연결하면 새 비밀번호를 설정할 수 있습니다.</p>
+        <button type="button" data-admin-sign-out>로그아웃</button>
+        <p data-admin-password-change-state aria-live="polite">현재 로그인된 상태에서 새 비밀번호를 설정할 수 있습니다.</p>
       </form>
 
       <section class="admin-customizer" aria-labelledby="site-settings-title">
@@ -283,9 +292,10 @@
       <span data-undo-message>작품을 목록에서 뺐습니다.</span>
       <button type="button" data-undo-action>되돌리기</button>
     </div>
+    </div>
 
     <script src="portfolio-data.js?v=live2d-1"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" crossorigin="anonymous"></script>
-    <script src="admin.js?v=cloud-2"></script>
+    <script src="admin.js?v=cloud-3"></script>
   </body>
 </html>
